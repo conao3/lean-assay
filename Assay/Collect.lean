@@ -52,11 +52,12 @@ def theoremsAbout (fns : Array Name) : MetaM (Array Name) := do
     found := found.push (n, line)
   return found.qsort (fun a b => a.2 < b.2 || (a.2 == b.2 && a.1.lt b.1)) |>.map (·.1)
 
-/-- The inductive types declared in the given modules that occur in an expression. -/
-def localInductives (mods : Array Name) (e : Expr) : CoreM (Array Name) := do
+/-- The inductive types declared in modules whose root is one of `roots` that occur in an
+expression. -/
+def localInductives (roots : Array Name) (e : Expr) : CoreM (Array Name) := do
   let env ← getEnv
   return e.getUsedConstants.filter fun c =>
-    (env.find? c matches some (.inductInfo _)) && mods.contains (moduleOf env c)
+    (env.find? c matches some (.inductInfo _)) && roots.contains (moduleOf env c).getRoot
 
 /-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them. -/
 def ensureInstances (ty : Name) : CommandElabM Unit := do

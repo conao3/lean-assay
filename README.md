@@ -54,9 +54,10 @@ stay in that file.
 For `#assay f g …`:
 
 1. It collects the theorems in the modules of `f`, `g`, … whose statements mention them or a
-   definition that calls them. A proposition defined in those modules is unfolded first, so
-   `theorem p_proven : P` with `def P : Prop := ∀ x, …` is read as `∀ x, …`. Each conjunct of a
-   conclusion is a column of the table.
+   definition that calls them. `#assay f g … using t₁ t₂ …` takes the theorems `t₁`, `t₂`, …
+   instead, from any module. A proposition defined in the modules of the functions and the theorems
+   is unfolded first, so `theorem p_proven : P` with `def P : Prop := ∀ x, …` is read as `∀ x, …`.
+   Each conjunct of a conclusion is a column of the table.
    - A hypothesis may be passed to the functions as a precondition (`f xs h` with
      `h : f_precond xs`). A column computes its conclusion only on inputs that satisfy the
      hypotheses, with the proofs replaced by the axiom `Assay.assumed`, which the compiler erases.
@@ -73,7 +74,8 @@ For `#assay f g …`:
      catch-all arm for a combination of constructors that has none, and swapping the branches of
      an `if`.
 4. Each broken version is elaborated next to the original under a new name, together with the
-   definitions that call it. Versions that do not typecheck are counted as stillborn.
+   definitions between it and the theorems: those the statements reach that call it, directly or
+   through each other, in any module of the same package. Versions that do not typecheck are counted as stillborn.
 5. Every column is run on the broken version. A cell is `✗` when an input satisfies the hypotheses
    but not the conclusion, `·` when enough inputs satisfied the hypotheses and the conclusion held,
    `?` when too few inputs satisfied the hypotheses, and `-` when the column does not depend on the
@@ -131,7 +133,8 @@ and `Examples/LspTouchstoneFixed/` the progress and position files at commit
 [`f77cc2b`](https://github.com/conao3/rust-lsp-touchstone/tree/f77cc2b/lean/LeanRustGen/Embed/lsp_touchstone),
 which adds the theorems that kill the holes `#assay` found in the earlier files.
 `Examples/Forms/` holds small files in the shapes of other corpora: functions that take a
-precondition proof, and a property stated as `def P : Prop`. `Examples/Verina/A35.lean` is the
+precondition proof, a property stated as `def P : Prop`, and a theorem in another module than the
+function, about a function that calls it (`Split/`). `Examples/Verina/A35.lean` is the
 task `verina_advanced_35` of [VERINA](https://github.com/sunblaze-ucb/verina) at commit `66b3ce5`,
 without its benchmark markers.
 

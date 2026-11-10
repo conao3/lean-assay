@@ -102,6 +102,16 @@ def suffixed (n : Name) (suffix : String) : Name :=
   | .str p s => .str p (s ++ suffix)
   | _ => n
 
+/-- The suffix of the names mutants are elaborated under. -/
+def mutantSuffix : String := "_assay"
+
+/-- The name the copy of `n` gets when its source is elaborated in the current module: `n` with
+`mutantSuffix`, and for a private `n`, private to the current module. -/
+def mutantName (env : Environment) (n : Name) : Name :=
+  match privateToUserName? n with
+  | some u => mkPrivateName env (suffixed u mutantSuffix)
+  | none => suffixed n mutantSuffix
+
 /-- Edits that rename every identifier whose last component is the last component of a renamed
 declaration. -/
 partial def renameEdits (renamed : Array Name) (suffix : String) (stx : Syntax) : Array Edit :=

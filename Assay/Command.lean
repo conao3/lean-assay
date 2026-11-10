@@ -23,9 +23,6 @@ register_option assay.timeout : Nat := {
   descr := "milliseconds a mutant may spend running the theorems before it is reported as timed out"
 }
 
-/-- The suffix of the names mutants are elaborated under. -/
-def mutantSuffix : String := "_assay"
-
 /-- How one clause ran against a mutant. -/
 inductive Cell where
   | killed (counterexample : List String)
@@ -79,6 +76,66 @@ def dependentsOf (mods : Array Name) (f : Name) : CoreM (Array Name) := do
         changed := true
   return out.filter (fun n => n == f || !n.isInternalDetail)
 
+/-- The declaration a constant that Lean generated belongs to: `f` for `f.match_1`, `f._unary` and
+`f.eq_1`, keeping the private prefix of a private declaration. -/
+def ownerOf (n : Name) : Name :=
+  let (pre, u) := match privatePrefix? n with
+    | some p => (p, privateToUserName n)
+    | none => (Name.anonymous, n)
+  pre ++ strip u
+where
+  strip (m : Name) : Name :=
+    match m with
+    | .str p _ => if m.isInternalDetail && !p.isAnonymous then strip p else m
+    | _ => m
+
+/-- The definitions that the statements reach, through the values of definitions in modules whose
+root is one of `roots`, and that reach `f`: `f` first, then each after the definitions it uses, so
+that elaborating their copies in this order makes each copy call the mutant. -/
+def chainTo (roots : Array Name) (stmts : Array Expr) (f : Name) : CoreM (Array Name) := do
+  let env ← getEnv
+  let isDef (n : Name) := env.find? n matches some (.defnInfo _)
+  let mut edges : Std.HashMap Name NameSet := {}
+  let mut seen : NameSet := {}
+  let mut stack : Array Name := stmts.foldl (fun acc s => acc ++ s.getUsedConstants) #[f]
+  while !stack.isEmpty do
+    let c := stack.back!
+    stack := stack.pop
+    if seen.contains c then continue
+    seen := seen.insert c
+    let some (.defnInfo d) := env.find? c | continue
+    if !roots.contains (moduleOf env c).getRoot then continue
+    let o := ownerOf c
+    for u in d.value.getUsedConstants do
+      let ou := ownerOf u
+      if ou != o && isDef ou then edges := edges.insert o ((edges.getD o {}).insert ou)
+      if !seen.contains u then stack := stack.push u
+  let mut reaching : NameSet := ({} : NameSet).insert f
+  let mut changed := true
+  while changed do
+    changed := false
+    for (o, us) in edges do
+      if !reaching.contains o && us.any reaching.contains then
+        reaching := reaching.insert o
+        changed := true
+  let mut order : Array Name := #[]
+  let mut visited : NameSet := {}
+  for start in #[f] ++ (reaching.toArray.qsort Name.lt) do
+    if visited.contains start || !isDef start then continue
+    let mut work : Array (Name × Bool) := #[(start, false)]
+    while !work.isEmpty do
+      let (n, done) := work.back!
+      work := work.pop
+      if done then
+        order := order.push n
+        continue
+      if visited.contains n then continue
+      visited := visited.insert n
+      work := work.push (n, true)
+      for u in (edges.getD n {}).toArray.qsort Name.lt do
+        if reaching.contains u && !visited.contains u && u != f then work := work.push (u, false)
+  return #[f] ++ order.filter (· != f)
+
 /-- Renames identifiers in a command text by reparsing it. -/
 def renameText (renamed : Array Name) (text : String) : CommandElabM String := do
   let src ← parseSource "<assay>" text
@@ -88,9 +145,9 @@ def renameText (renamed : Array Name) (text : String) : CommandElabM String := d
   return applyEdits text 0 text.rawEndPos edits
 
 /-- Substitutes the mutant names in a statement. -/
-def substitute (renamed : Array Name) (e : Expr) : Expr :=
+def substitute (env : Environment) (renamed : Array Name) (e : Expr) : Expr :=
   e.replace fun
-    | .const n us => if renamed.contains n then some (.const (suffixed n mutantSuffix) us) else none
+    | .const n us => if renamed.contains n then some (.const (mutantName env n) us) else none
     | _ => none
 
 /-- The applications of the renamed functions in an expression that do not depend on a bound
@@ -117,7 +174,7 @@ def differsUnder (renamed : Array Name) (stmt : Expr) : MetaM (Option Expr) := d
     let apps := ((← xs.mapM inferType).push body).foldl (appsOf renamed) #[]
     let mut eqs := #[]
     for a in apps do
-      let eq ← mkEq (substitute renamed a) a
+      let eq ← mkEq (substitute (← getEnv) renamed a) a
       if (← observing? (mkDecide eq)).isSome then
         eqs := eqs.push eq
     if eqs.isEmpty then return none
@@ -128,21 +185,21 @@ def sameOutput (f : Name) : MetaM Expr := do
   let info ← getConstInfo f
   forallTelescope info.type fun xs _ => do
     let us := info.levelParams.map mkLevelParam
-    let lhs := mkAppN (.const (suffixed f mutantSuffix) us) xs
+    let lhs := mkAppN (.const (mutantName (← getEnv) f) us) xs
     let rhs := mkAppN (.const f us) xs
     mkForallFVars xs (← mkEq lhs rhs)
 
-/-- Elaborates a mutant and the functions that depend on it. Returns `false` if it does not
-typecheck. -/
-def elabMutant (m : Mutant) (renamed : Array Name) : CommandElabM Bool := do
-  let src ← sourceOf m.fn
-  let cmd ← commandOf src m.fn
+/-- Elaborates a mutant and the functions that depend on it, given with their source files and
+commands. Returns `false` if it does not typecheck. -/
+def elabMutant (m : Mutant) (renamed : Array Name) (sources : Array (SourceFile × Syntax)) :
+    CommandElabM Bool := do
+  let (src, cmd) := sources[0]!
   match m.change with
   | .replace value =>
     let info ← getConstInfo m.fn
     try
       liftCoreM <| addAndCompile <| .defnDecl {
-        name := suffixed m.fn mutantSuffix, levelParams := info.levelParams, type := info.type,
+        name := mutantName (← getEnv) m.fn, levelParams := info.levelParams, type := info.type,
         value, hints := .opaque, safety := .safe }
     catch _ => return false
   | .edits es =>
@@ -150,10 +207,8 @@ def elabMutant (m : Mutant) (renamed : Array Name) : CommandElabM Bool := do
     let some e := cmd.getTailPos? | return false
     let text ← renameText renamed (applyEdits src.text s e es)
     if ← elabText (wrap src (declNamespace cmd m.fn) text) then return false
-  for g in renamed do
+  for g in renamed, (gsrc, gcmd) in sources do
     if g == m.fn then continue
-    let gsrc ← sourceOf g
-    let gcmd ← commandOf gsrc g
     let text ← renameText renamed (textOf gsrc gcmd)
     if ← elabText (wrap gsrc (declNamespace gcmd g) text) then return false
   return true
@@ -173,23 +228,29 @@ def countFor (samples maxSamples minSatisfied : Nat) (s : Summary) : Nat :=
   if s.exhaustive || tried == 0 || s.held ≥ 4 * minSatisfied then samples
   else min maxSamples (4 * minSatisfied * tried / max s.held 1)
 
-/-- Runs every mutant of the functions against the theorems about them and reports the result. -/
-def assay (fns : Array Name) (ref : Syntax) : CommandElabM Unit := do
+/-- Runs every mutant of the functions against the theorems about them (`named`, or else the
+theorems in the functions' modules that mention them) and reports the result. -/
+def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : CommandElabM Unit := do
   let opts ← getOptions
   let minSatisfied := assay.minSatisfied.get opts
   let env ← getEnv
-  let mods := fns.map (moduleOf env)
-  let mut affected := #[]
-  for f in fns do
-    for g in ← liftCoreM <| dependentsOf mods f do
-      if !affected.contains g then affected := affected.push g
-  let thms ← liftTermElabM <| theoremsAbout affected
+  let fnMods := fns.map (moduleOf env)
+  let thms ← match named with
+    | some ts => pure ts
+    | none => do
+      let mut affected := #[]
+      for f in fns do
+        for g in ← liftCoreM <| dependentsOf fnMods f do
+          if !affected.contains g then affected := affected.push g
+      liftTermElabM <| theoremsAbout affected
+  let mods := (fnMods ++ thms.map (moduleOf env)).foldl (fun acc m => if acc.contains m then acc else acc.push m) #[]
+  let roots := mods.foldl (fun acc m => if acc.contains m.getRoot then acc else acc.push m.getRoot) #[]
   let propDefs ← liftTermElabM <| propDefsIn mods
   let statements ← thms.mapM fun t => liftTermElabM <| statementOf propDefs t
   if thms.isEmpty then
     throwErrorAt ref "no theorem mentions {fns}"
   for ty in statements ++ (← fns.mapM fun f => return (← getConstInfo f).type) do
-    for i in ← liftCoreM <| localInductives mods ty do
+    for i in ← liftCoreM <| localInductives roots ty do
       ensureInstances i
   let mut clauses := #[]
   for t in thms, s in statements do
@@ -229,15 +290,25 @@ def assay (fns : Array Name) (ref : Syntax) : CommandElabM Unit := do
     | .untestable _ => pure ()
   let mut results := #[]
   for f in fns do
-    let src ← sourceOf f
-    let cmd ← commandOf src f
-    let renamed ← liftCoreM <| dependentsOf mods f
+    let renamed ← liftCoreM <| chainTo roots statements f
+    let mut files : Std.HashMap Name SourceFile := {}
+    let mut sources := #[]
+    for g in renamed do
+      let mod := moduleOf env g
+      let gsrc ← match files[mod]? with
+        | some s => pure s
+        | none => do
+          let s ← sourceOf g
+          files := files.insert mod s
+          pure s
+      sources := sources.push (gsrc, ← commandOf gsrc g)
+    let (src, cmd) := sources[0]!
     let reps ← liftTermElabM <| replacements f
     let mutants := reps.map (fun (l, v) => { fn := f, label := s!"{f.componentsRev.head!} := {l}", change := .replace v : Mutant })
       ++ (editMutants src f cmd).map fun m => { m with label := s!"{f.componentsRev.head!}: {m.label}" }
     for m in mutants do
       let r : MutantResult ← withoutModifyingEnv do
-        if !(← elabMutant m renamed) then
+        if !(← elabMutant m renamed sources) then
           return { mutant := m, verdict := .stillborn, cells := #[] }
         let deadline := (← IO.monoMsNow) + timeout
         let same ← runClause (← liftTermElabM <| sameOutput f) samples deadline
@@ -251,7 +322,7 @@ def assay (fns : Array Name) (ref : Syntax) : CommandElabM Unit := do
           if !usable || !c.statement.getUsedConstants.any renamed.contains then
             cells := cells.push Cell.skipped
             continue
-          let cell ← match ← runClause (substitute renamed c.statement) count deadline with
+          let cell ← match ← runClause (substitute (← getEnv) renamed c.statement) count deadline with
             | .ran s =>
               if s.timedOut then timedOut := true
               match s.counterexample with
@@ -306,12 +377,16 @@ def assay (fns : Array Name) (ref : Syntax) : CommandElabM Unit := do
     let msg := m!"hole: `{h.mutant.label}` satisfies every theorem but changes the output on an input that satisfies the hypotheses of {differs}"
     if assay.failOnHole.get opts then logErrorAt ref msg else logWarningAt ref msg
 
-/-- `#assay f g …` runs broken versions of `f`, `g`, … against the theorems about them. -/
-syntax (name := assayCmd) "#assay " ident+ : command
+/-- `#assay f g …` runs broken versions of `f`, `g`, … against the theorems about them.
+`#assay f g … using t₁ t₂ …` runs them against the theorems `t₁`, `t₂`, … instead, which may be in
+other modules. -/
+syntax (name := assayCmd) "#assay " ident+ (" using " ident+)? : command
 
 @[command_elab assayCmd]
 def elabAssay : CommandElab := fun stx => do
-  let fns ← stx[1].getArgs.mapM fun i => liftCoreM <| realizeGlobalConstNoOverloadWithInfo i
-  assay fns stx
+  let resolve (i : Syntax) := liftCoreM <| realizeGlobalConstNoOverloadWithInfo i
+  let fns ← stx[1].getArgs.mapM resolve
+  let named ← if stx[2].isNone then pure none else some <$> stx[2][1].getArgs.mapM resolve
+  assay fns named stx
 
 end Assay
