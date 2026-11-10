@@ -116,7 +116,10 @@ nix build                             # build and test inside the Nix sandbox
 ```
 
 `Examples/LspTouchstone/` holds the Lean files of lsp-touchstone at commit
-[`3c19dae`](https://github.com/conao3/rust-lsp-touchstone/tree/3c19daee54f248abfad0f7540e3b65f11602375d/lean/LeanRustGen/Embed/lsp_touchstone).
+[`3c19dae`](https://github.com/conao3/rust-lsp-touchstone/tree/3c19daee54f248abfad0f7540e3b65f11602375d/lean/LeanRustGen/Embed/lsp_touchstone),
+and `Examples/LspTouchstoneFixed/` the progress and position files at commit
+[`f77cc2b`](https://github.com/conao3/rust-lsp-touchstone/tree/f77cc2b/lean/LeanRustGen/Embed/lsp_touchstone),
+which adds the theorems that kill the holes `#assay` found in the earlier files.
 
 ## License
 
