@@ -46,8 +46,8 @@ rev = "master"
 ```
 
 Run `#assay` in a file of its own: it derives the instances it needs (`Repr`, `DecidableEq`,
-plausible's `Arbitrary` and `Shrinkable`) for the types of the audited module, and those instances
-stay in that file.
+plausible's `Arbitrary` and `Shrinkable`) for the types of the audited package where a deriving
+handler applies, and those instances stay in that file.
 
 ## What it checks
 
@@ -57,7 +57,8 @@ For `#assay f g …`:
    definition that calls them. `#assay f g … using t₁ t₂ …` takes the theorems `t₁`, `t₂`, …
    instead, from any module. A proposition defined in the modules of the functions and the theorems
    is unfolded first, so `theorem p_proven : P` with `def P : Prop := ∀ x, …` is read as `∀ x, …`.
-   Each conjunct of a conclusion is a column of the table.
+   Each conjunct of a conclusion is a column of the table, also after unfolding `let` and `have`
+   and under binders and hypotheses (`H → A ∧ B` gives `H → A` and `H → B`).
    - A hypothesis may be passed to the functions as a precondition (`f xs h` with
      `h : f_precond xs`). A column computes its conclusion only on inputs that satisfy the
      hypotheses, with the proofs replaced by the axiom `Assay.assumed`, which the compiler erases.

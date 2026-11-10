@@ -59,7 +59,9 @@ def localInductives (roots : Array Name) (e : Expr) : CoreM (Array Name) := do
   return e.getUsedConstants.filter fun c =>
     (env.find? c matches some (.inductInfo _)) && roots.contains (moduleOf env c).getRoot
 
-/-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them. -/
+/-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them, where a
+deriving handler applies. A type left without an instance makes the checks that need it not
+executable, which the report says. -/
 def ensureInstances (ty : Name) : CommandElabM Unit := do
   let id := mkIdent ty
   let missing (cls : Name) : CommandElabM Bool := liftTermElabM do
@@ -71,6 +73,11 @@ def ensureInstances (ty : Name) : CommandElabM Unit := do
       (``Plausible.Arbitrary, ← `(deriving instance Plausible.Arbitrary for $id)),
       (``Plausible.Shrinkable, ← `(instance : Plausible.Shrinkable $id := {}))] do
     if ← missing cls then
+      let before := (← get).messages
+      let env ← getEnv
+      modify fun s => { s with messages := {} }
       elabCommand cmd
+      if (← get).messages.hasErrors then setEnv env
+      modify fun s => { s with messages := before }
 
 end Assay

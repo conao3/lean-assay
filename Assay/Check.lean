@@ -61,16 +61,24 @@ def Clause.label (c : Clause) : String :=
   let n := c.theorem_.componentsRev.head!.toString
   if c.index == 0 then n else s!"{n}.{c.index}"
 
-/-- Splits nested conjunctions. -/
-partial def splitAnd (e : Expr) : Array Expr :=
+/-- Splits nested conjunctions, also under binders and hypotheses: `H → A ∧ B` gives `H → A` and
+`H → B`. -/
+partial def splitAnd (e : Expr) : MetaM (Array Expr) := do
   match e.and? with
-  | some (a, b) => splitAnd a ++ splitAnd b
-  | none => #[e]
+  | some (a, b) => return (← splitAnd a) ++ (← splitAnd b)
+  | none =>
+    let .forallE _ _ b _ := e | return #[e]
+    if !b.hasLooseBVars && b.and?.isNone && !b.isForall then return #[e]
+    forallBoundedTelescope e (some 1) fun xs body => do
+      let parts ← splitAnd body
+      if parts.size == 1 then return #[e]
+      parts.mapM (mkForallFVars xs ·)
 
-/-- The clauses of a theorem with the given statement. -/
+/-- The clauses of a theorem with the given statement, after unfolding its `let` and `have`. -/
 def clausesOf (thm : Name) (stmt : Expr) : MetaM (Array Clause) := do
+  let stmt ← zetaReduce stmt
   forallTelescope stmt fun xs body => do
-    let conjuncts := splitAnd body
+    let conjuncts ← splitAnd body
     if conjuncts.size == 1 then
       return #[{ theorem_ := thm, index := 0, statement := stmt }]
     conjuncts.mapIdxM fun i c => do
