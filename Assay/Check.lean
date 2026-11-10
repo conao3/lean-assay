@@ -67,13 +67,12 @@ partial def splitAnd (e : Expr) : Array Expr :=
   | some (a, b) => splitAnd a ++ splitAnd b
   | none => #[e]
 
-/-- The clauses of a theorem. -/
-def clausesOf (thm : Name) : MetaM (Array Clause) := do
-  let info ← getConstInfo thm
-  forallTelescope info.type fun xs body => do
+/-- The clauses of a theorem with the given statement. -/
+def clausesOf (thm : Name) (stmt : Expr) : MetaM (Array Clause) := do
+  forallTelescope stmt fun xs body => do
     let conjuncts := splitAnd body
     if conjuncts.size == 1 then
-      return #[{ theorem_ := thm, index := 0, statement := info.type }]
+      return #[{ theorem_ := thm, index := 0, statement := stmt }]
     conjuncts.mapIdxM fun i c => do
       return { theorem_ := thm, index := i + 1, statement := ← mkForallFVars xs c }
 
@@ -104,12 +103,13 @@ def decideOf (p : Expr) : MetaM Expr := do
   catch _ =>
     throwError "`{← ppExpr p}` is not decidable"
 
-/-- The pair `(verdict hyps concl, thunk of the shown binders)` for fixed binder values. -/
+/-- The pair `(verdict hyps concl, thunk of the shown binders)` for fixed binder values, from the
+types of the hypotheses and the conclusion. -/
 def resultOf (binders : Array Expr) (hyps : Array Expr) (concl : Expr) : MetaM Expr := do
   let mut hypsB := toExpr true
   for h in hyps do
-    hypsB := mkApp2 (mkConst ``and) hypsB (← decideOf (← inferType h))
-  let conclB ← decideOf concl
+    hypsB := mkApp2 (mkConst ``and) hypsB (← decideOf h)
+  let conclB := .lam `_ (mkConst ``Unit) (← decideOf concl) .default
   let v := mkApp2 (mkConst ``Assay.verdict) hypsB conclB
   let mut shown ← mkListLit (mkConst ``String) []
   let names ← binders.mapM fun x => return (← x.fvarId!.getUserName).eraseMacroScopes.toString
@@ -123,32 +123,43 @@ def resultOf (binders : Array Expr) (hyps : Array Expr) (concl : Expr) : MetaM E
   let thunk := mkApp2 (mkConst ``Thunk.mk [0]) strs (.lam `_ (mkConst ``Unit) shown .default)
   mkAppM ``Prod.mk #[v, thunk]
 
-unsafe def evalSummaryImpl (e : Expr) : MetaM Summary :=
-  evalExpr Summary (mkConst ``Assay.Summary) e
+unsafe def evalSummaryImpl (e : Expr) : MetaM (IO Summary) :=
+  evalExpr (IO Summary) (mkApp (mkConst ``IO) (mkConst ``Assay.Summary)) e
 
-/-- Evaluates an expression of type `Summary`. -/
+/-- Evaluates an expression of type `IO Summary`. -/
 @[implemented_by evalSummaryImpl]
-opaque evalSummary (e : Expr) : MetaM Summary
+opaque evalSummary (e : Expr) : MetaM (IO Summary)
 
-/-- Builds and runs the check of a closed proposition `∀ xs, H₁ → … → Hₘ → C`. -/
-def runStatement (stmt : Expr) (count : Nat) : MetaM Outcome := do
+/-- Replaces the proofs of hypotheses by `Assay.assumed`, which the compiler erases. Code that takes a
+proof argument (a precondition) runs with it, since a check only reaches the conclusion when the
+hypotheses hold. -/
+def eraseProofs (hyps : Array Expr) (e : Expr) : MetaM Expr := do
+  let mut e := e
+  for h in hyps.reverse do
+    if e.containsFVar h.fvarId! then
+      let ty ← inferType h
+      e := e.replaceFVar h (mkApp (mkConst ``Assay.assumed) ty)
+  return e
+
+/-- Builds and runs the check of a closed proposition `∀ xs, H₁ → … → Hₘ → C`, stopping when the
+monotonic clock passes `deadline` (milliseconds). -/
+def runStatement (stmt : Expr) (count deadline : Nat) : MetaM Outcome := do
   let opts ← getOptions
   try
     forallTelescope stmt fun xs body => do
       let mut binders := #[]
       let mut hyps := #[]
+      let mut hypTypes := #[]
       for x in xs do
         let ty ← inferType x
-        if ← isProp ty then hyps := hyps.push x else
-          if !hyps.isEmpty then
-            throwError "a data binder follows a hypothesis"
+        if ← isProp ty then
+          hyps := hyps.push x
+          hypTypes := hypTypes.push (← eraseProofs hyps.pop ty)
+        else
+          if ty.hasAnyFVar (fun f => hyps.any (·.fvarId! == f)) then
+            throwError "the type of a binder uses a proof of a hypothesis"
           binders := binders.push x
-      if body.hasAnyFVar (fun f => hyps.any (·.fvarId! == f)) then
-        throwError "the conclusion uses a proof of a hypothesis"
-      for h in hyps do
-        if (← inferType h).hasAnyFVar (fun f => hyps.any (·.fvarId! == f)) then
-          throwError "a hypothesis uses a proof of another hypothesis"
-      let res ← resultOf binders hyps body
+      let res ← resultOf binders hypTypes (← eraseProofs hyps body)
       let pairTy ← inferType res
       let mut enums : Array (Array Expr) := #[]
       let mut total := 1
@@ -157,21 +168,22 @@ def runStatement (stmt : Expr) (count : Nat) : MetaM Outcome := do
         | some vs => enums := enums.push vs; total := total * vs.size
         | none => break
       if enums.size == binders.size && total ≤ assay.enumLimit.get opts then
-        let mut acc ← mkListLit pairTy [res]
+        let thunkTy ← mkArrow (mkConst ``Unit) pairTy
+        let mut acc ← mkListLit thunkTy [.lam `_ (mkConst ``Unit) res .default]
         for x in binders.reverse, vs in enums.reverse do
           let lst ← mkListLit (← inferType x) vs.toList
           acc ← mkAppM ``List.flatMap #[← mkLambdaFVars #[x] acc, lst]
-        let run ← mkAppM ``Assay.runAll #[acc]
-        return .ran (← evalSummary (← instantiateMVars run))
+        let run := mkApp2 (mkConst ``Assay.runAll) acc (toExpr deadline)
+        return .ran (← (← evalSummary (← instantiateMVars run)))
       let gen ← mkAppOptM ``Pure.pure #[mkConst ``Plausible.Gen [0], none, none, res]
       let mut acc := gen
       for x in binders.reverse do
         let s ← try mkAppOptM ``Assay.sample #[← inferType x, none]
           catch _ => throwError "no `SampleableExt` instance for `{← ppExpr (← inferType x)}`"
         acc ← mkAppM ``Bind.bind #[s, ← mkLambdaFVars #[x] acc]
-      let run := mkApp4 (mkConst ``Assay.runRandom) acc
-        (toExpr count) (toExpr (assay.maxSize.get opts)) (toExpr (assay.seed.get opts))
-      return .ran (← evalSummary run)
+      let run := mkApp5 (mkConst ``Assay.runRandom) acc
+        (toExpr count) (toExpr (assay.maxSize.get opts)) (toExpr (assay.seed.get opts)) (toExpr deadline)
+      return .ran (← (← evalSummary (← instantiateMVars run)))
   catch e =>
     return .untestable (← e.toMessageData.toString)
 

@@ -71,37 +71,37 @@ offsetList: 33:18: 0 ↦ 1                                                      
 offsetList: 34:18: 1 ↦ 0                                                                  -   ✗   ·   -   ✗   ·    killed
 offsetList: 34:37: + ↦ -                                                                  -   ✗   ✗   -   ·   ✗    killed
 
-72 mutants: 43 killed, 15 holes, 1 untested, 1 equivalent, 12 stillborn
+72 mutants: 43 killed, 15 holes, 1 untested, 1 equivalent, 0 timed out, 12 stillborn
 ---
-warning: hole: `unitWidth: 9:17: | .utf8, c => c.utf8Size ↦ if c.val < 0x10000 then 1 else 2` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf8, #2 := '漢'
+warning: hole: `unitWidth: 9:17: | .utf8, c => c.utf8Size ↦ if c.val < 0x10000 then 1 else 2` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf8, c := '漢'
 ---
-warning: hole: `unitWidth: 10:18: | .utf16, c => if c.val < 0x10000 then 1 else 2 ↦ c.utf8Size` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '߿'
+warning: hole: `unitWidth: 10:18: | .utf16, c => if c.val < 0x10000 then 1 else 2 ↦ c.utf8Size` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '߿'
 ---
-warning: hole: `unitWidth: 10:18: | .utf16, c => if c.val < 0x10000 then 1 else 2 ↦ 1` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '😀'
+warning: hole: `unitWidth: 10:18: | .utf16, c => if c.val < 0x10000 then 1 else 2 ↦ 1` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '😀'
 ---
-warning: hole: `unitWidth: 10:42: swap the branches of if` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '߿'
+warning: hole: `unitWidth: 10:42: swap the branches of if` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '߿'
 ---
-warning: hole: `unitWidth: 10:27: swap the operands of <` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '߿'
+warning: hole: `unitWidth: 10:27: swap the operands of <` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '߿'
 ---
-warning: hole: `unitWidth: 10:27: < ↦ ≤` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '𐀀'
+warning: hole: `unitWidth: 10:27: < ↦ ≤` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '𐀀'
 ---
-warning: hole: `unitWidth: 10:27: < ↦ >` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '߿'
+warning: hole: `unitWidth: 10:27: < ↦ >` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '߿'
 ---
-warning: hole: `unitWidth: 10:29: 0x10000 ↦ 65537` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '𐀀'
+warning: hole: `unitWidth: 10:29: 0x10000 ↦ 65537` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '𐀀'
 ---
-warning: hole: `unitWidth: 10:29: 0x10000 ↦ 65535` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '￿'
+warning: hole: `unitWidth: 10:29: 0x10000 ↦ 65535` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '￿'
 ---
-warning: hole: `unitWidth: 10:42: 1 ↦ 2` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '߿'
+warning: hole: `unitWidth: 10:42: 1 ↦ 2` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '߿'
 ---
-warning: hole: `unitWidth: 10:49: 2 ↦ 3` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '😀'
+warning: hole: `unitWidth: 10:49: 2 ↦ 3` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '😀'
 ---
-warning: hole: `unitWidth: 10:49: 2 ↦ 1` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf16, #2 := '😀'
+warning: hole: `unitWidth: 10:49: 2 ↦ 1` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf16, c := '😀'
 ---
-warning: hole: `unitWidth: 11:18: 1 ↦ 2` satisfies every theorem; it differs from the original on #1 := proved.Encoding.utf32, #2 := '\n'
+warning: hole: `unitWidth: 11:18: 1 ↦ 2` satisfies every theorem but changes the output on an input that satisfies the hypotheses of unitWidth_pos: e := proved.Encoding.utf32, c := '\n'
 ---
-warning: hole: `shift: 21:22: | .splitsChar n => .splitsChar (n + 1) ↦ .exact (n + 1)` satisfies every theorem; it differs from the original on a := proved.Resolution.splitsChar 0
+warning: hole: `shift: 21:22: | .splitsChar n => .splitsChar (n + 1) ↦ .exact (n + 1)` satisfies every theorem but changes the output on an input that satisfies the hypotheses of resolve_splits.1: e := proved.Encoding.utf16, cs := ['あ', '𠀋', '€', 'ß'], n := 2, i := 1
 ---
-warning: hole: `shift: 21:22: | .splitsChar n => .splitsChar (n + 1) ↦ .clamped (n + 1)` satisfies every theorem; it differs from the original on a := proved.Resolution.splitsChar 0
+warning: hole: `shift: 21:22: | .splitsChar n => .splitsChar (n + 1) ↦ .clamped (n + 1)` satisfies every theorem but changes the output on an input that satisfies the hypotheses of resolve_splits.1: e := proved.Encoding.utf16, cs := ['あ', '𠀋', '€', 'ß'], n := 2, i := 1
 -/
 #guard_msgs in
 #assay proved.unitWidth proved.Resolution.shift proved.resolveList proved.offsetList

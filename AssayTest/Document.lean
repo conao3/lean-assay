@@ -24,7 +24,7 @@ replaceList: 4:17: swap the operands of ++  ✗   ·   ✗   ·   ✗   ·    ki
 replaceList: 4:3: cs.take ↦ cs.drop         ✗   ✗   ✗   ✗   ✗   ✗    killed
 replaceList: 4:30: cs.drop ↦ cs.take        ·   ✗   ·   ✗   ✗   ✗    killed
 
-12 mutants: 12 killed, 0 holes, 0 untested, 0 equivalent, 0 stillborn
+12 mutants: 12 killed, 0 holes, 0 untested, 0 equivalent, 0 timed out, 0 stillborn
 -/
 #guard_msgs in
 #assay proved.replaceList

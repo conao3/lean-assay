@@ -33,7 +33,7 @@ step: 19:3: add | .created, .finish => some .ended            ·   ✗   ✗   �
 step: 19:3: add | .begun, .begin => some .begun               ·   ·   ·   ✗   ·   ·   ·   ·    killed
 step: 19:3: add | .begun, .begin => some .ended               ·   ·   ·   ✗   ·   ·   ·   ·    killed
 
-19 mutants: 19 killed, 0 holes, 0 untested, 0 equivalent, 0 stillborn
+19 mutants: 19 killed, 0 holes, 0 untested, 0 equivalent, 0 timed out, 0 stillborn
 -/
 #guard_msgs in
 #assay proved.step

@@ -147,12 +147,13 @@ def wrap (src : SourceFile) (ns : Name) (body : String) : String :=
 partial def elabText (text : String) : CommandElabM Bool := do
   let inputCtx := mkInputContext text "<assay>"
   let before := (← get).messages
+  let infoBefore := (← get).infoState
   modify fun s => { s with messages := {} }
   let parseFailed ← withScope (fun sc => { sc with opts := sc.opts.setBool `Elab.async false }) do
     withReader ({ · with fileMap := FileMap.ofString text, fileName := "<assay>" }) do
       loop inputCtx {} {}
   let failed := parseFailed || (← get).messages.hasErrors
-  modify fun s => { s with messages := before }
+  modify fun s => { s with messages := before, infoState := infoBefore }
   return failed
 where
   loop (inputCtx : InputContext) (state : ModuleParserState) (log : MessageLog) : CommandElabM Bool := do

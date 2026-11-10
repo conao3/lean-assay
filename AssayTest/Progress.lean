@@ -32,11 +32,11 @@ step: 19:3: add | .created, .finish => some .ended            ·   ✗   ✗   �
 step: 19:3: add | .begun, .begin => some .begun               ·   ·   ·   ·   ·   ·   ·    HOLE
 step: 19:3: add | .begun, .begin => some .ended               ·   ·   ·   ·   ·   ·   ·    HOLE
 
-19 mutants: 17 killed, 2 holes, 0 untested, 0 equivalent, 0 stillborn
+19 mutants: 17 killed, 2 holes, 0 untested, 0 equivalent, 0 timed out, 0 stillborn
 ---
-warning: hole: `step: 19:3: add | .begun, .begin => some .begun` satisfies every theorem; it differs from the original on #1 := proved.TokenState.begun, #2 := proved.ProgressKind.begin
+warning: hole: `step: 19:3: add | .begun, .begin => some .begun` satisfies every theorem but changes the output on an input that satisfies the hypotheses of begun_never_returns_to_created: k := proved.ProgressKind.begin
 ---
-warning: hole: `step: 19:3: add | .begun, .begin => some .ended` satisfies every theorem; it differs from the original on #1 := proved.TokenState.begun, #2 := proved.ProgressKind.begin
+warning: hole: `step: 19:3: add | .begun, .begin => some .ended` satisfies every theorem but changes the output on an input that satisfies the hypotheses of begun_never_returns_to_created: k := proved.ProgressKind.begin
 -/
 #guard_msgs in
 #assay proved.step

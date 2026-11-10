@@ -20,16 +20,34 @@ def moduleOf (env : Environment) (n : Name) : Name :=
 def isGenerated (env : Environment) (fns : Array Name) (n : Name) : Bool :=
   n.isInternalDetail || fns.contains n.getPrefix || isAuxRecursor env n || isNoConfusion env n
 
-/-- The theorems in the audited functions' modules whose statement mentions one of the functions,
-in the order they were declared. -/
-def theoremsAbout (fns : Array Name) : CoreM (Array Name) := do
+/-- The definitions of propositions (`def P : Prop`, `def Q (x : α) : Prop`) in the given modules. -/
+def propDefsIn (mods : Array Name) : MetaM NameSet := do
+  let env ← getEnv
+  let mut out : NameSet := {}
+  for (n, info) in env.constants.toList do
+    let .defnInfo d := info | continue
+    if n.isInternalDetail || !mods.contains (moduleOf env n) then continue
+    if ← forallTelescope d.type fun _ ret => return ret.isProp then
+      out := out.insert n
+  return out
+
+/-- A theorem's statement with the propositions defined in the audited modules unfolded, so that
+`theorem p_proven : P` with `def P : Prop := ∀ x, …` states `∀ x, …`. -/
+def statementOf (propDefs : NameSet) (thm : Name) : MetaM Expr := do
+  let ty ← deltaExpand (← getConstInfo thm).type propDefs.contains
+  return ty.headBeta
+
+/-- The theorems in the audited functions' modules whose statement, with the modules' propositions
+unfolded, mentions one of the functions, in the order they were declared. -/
+def theoremsAbout (fns : Array Name) : MetaM (Array Name) := do
   let env ← getEnv
   let mods := fns.map (moduleOf env)
+  let propDefs ← propDefsIn mods
   let mut found : Array (Name × Nat) := #[]
   for (n, info) in env.constants.toList do
-    let .thmInfo thm := info | continue
+    let .thmInfo _ := info | continue
     if isGenerated env fns n || !mods.contains (moduleOf env n) then continue
-    if !thm.type.getUsedConstants.any fns.contains then continue
+    if !(← statementOf propDefs n).getUsedConstants.any fns.contains then continue
     let line := (← findDeclarationRanges? n).map (·.range.pos.line) |>.getD 0
     found := found.push (n, line)
   return found.qsort (fun a b => a.2 < b.2 || (a.2 == b.2 && a.1.lt b.1)) |>.map (·.1)

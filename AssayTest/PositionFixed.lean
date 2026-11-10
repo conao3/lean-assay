@@ -75,7 +75,7 @@ offsetList: 33:18: 0 ↦ 1                                                      
 offsetList: 34:18: 1 ↦ 0                                                                  -   ✗   ·   -   ✗   ·   -   -   -   ✗    killed
 offsetList: 34:37: + ↦ -                                                                  -   ✗   ✗   -   ·   ✗   -   -   -   ✗    killed
 
-72 mutants: 59 killed, 0 holes, 0 untested, 1 equivalent, 12 stillborn
+72 mutants: 59 killed, 0 holes, 0 untested, 1 equivalent, 0 timed out, 12 stillborn
 -/
 #guard_msgs in
 #assay proved.unitWidth proved.Resolution.shift proved.resolveList proved.offsetList

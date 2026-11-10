@@ -5,8 +5,8 @@ against them.
 
 A proof that goes through says nothing about the implementation if a broken implementation
 satisfies the same theorems. `#assay f` breaks `f` in many small ways, runs every theorem about
-`f` against each broken version, and reports the broken versions that change what `f` returns but
-still satisfy every theorem. It does not need the proofs: it decides the statements on concrete
+`f` against each broken version, and reports the broken versions that satisfy every theorem but
+change what `f` returns on an input that satisfies a theorem's hypotheses. It does not need the proofs: it decides the statements on concrete
 inputs, so it also works on theorems that are still `sorry`.
 
 ```lean
@@ -27,8 +27,8 @@ step := fun _ _ => none                                       ·   ?   ?   ·   
 step: 19:3: add | .begun, .begin => some .begun               ·   ·   ·   ·   ·   ·   ·    HOLE
 …
 
-19 mutants: 17 killed, 2 holes, 0 untested, 0 equivalent, 0 stillborn
-warning: hole: `step: 19:3: add | .begun, .begin => some .begun` satisfies every theorem; it differs from the original on #1 := proved.TokenState.begun, #2 := proved.ProgressKind.begin
+19 mutants: 17 killed, 2 holes, 0 untested, 0 equivalent, 0 timed out, 0 stillborn
+warning: hole: `step: 19:3: add | .begun, .begin => some .begun` satisfies every theorem but changes the output on an input that satisfies the hypotheses of begun_never_returns_to_created: k := proved.ProgressKind.begin
 ```
 
 The full outputs for three files of [lsp-touchstone](https://github.com/conao3/rust-lsp-touchstone)
@@ -54,7 +54,12 @@ stay in that file.
 For `#assay f g …`:
 
 1. It collects the theorems in the modules of `f`, `g`, … whose statements mention them or a
-   definition that calls them. Each conjunct of a conclusion is a column of the table.
+   definition that calls them. A proposition defined in those modules is unfolded first, so
+   `theorem p_proven : P` with `def P : Prop := ∀ x, …` is read as `∀ x, …`. Each conjunct of a
+   conclusion is a column of the table.
+   - A hypothesis may be passed to the functions as a precondition (`f xs h` with
+     `h : f_precond xs`). A column computes its conclusion only on inputs that satisfy the
+     hypotheses, with the proofs replaced by the axiom `Assay.assumed`, which the compiler erases.
 2. It runs every column on the original functions. A column that fails on the original is
    reported and left out of the rest. A column whose hypotheses no input satisfies is reported as
    possibly vacuous.
@@ -68,15 +73,20 @@ For `#assay f g …`:
      catch-all arm for a combination of constructors that has none, and swapping the branches of
      an `if`.
 4. Each broken version is elaborated next to the original under a new name, together with the
-   definitions that call it. Versions that do not typecheck are counted as stillborn. A version
-   whose output equals the original on every input tried is counted as equivalent and not shown.
+   definitions that call it. Versions that do not typecheck are counted as stillborn.
 5. Every column is run on the broken version. A cell is `✗` when an input satisfies the hypotheses
    but not the conclusion, `·` when enough inputs satisfied the hypotheses and the conclusion held,
    `?` when too few inputs satisfied the hypotheses, and `-` when the column does not depend on the
    function.
 
-A broken version is a `HOLE` when it changes the output and every column that depends on it held.
-The warning names an input on which it differs from the original.
+A broken version is a `HOLE` when every column that depends on it held and, on an input that
+satisfies the hypotheses of some column, a function it changes returns a different value from the
+original. The warning names that theorem and input. A version whose output equals the original on
+every input tried, or on every input tried that satisfies the hypotheses, is counted as equivalent
+and not shown.
+
+Each broken version has `assay.timeout` milliseconds to run the columns. A version that is not
+killed before then is reported as `timeout`.
 
 Inputs are random, from a fixed seed, so a run always gives the same table. When every binder has
 a type whose constructors have no fields, and the product of their sizes is at most
@@ -94,6 +104,7 @@ every UTF-8 and UTF-16 width and the code points at the boundaries between width
 | `assay.enumLimit` | 4096 | largest number of inputs tried exhaustively |
 | `assay.maxSize` | 30 | largest size passed to the generators |
 | `assay.seed` | 0 | seed of the random inputs |
+| `assay.timeout` | 30000 | milliseconds a broken version may spend running the columns |
 | `assay.failOnHole` | false | report holes as errors, so that `lake build` fails |
 
 ## Limits
@@ -103,7 +114,6 @@ every UTF-8 and UTF-16 width and the code points at the boundaries between width
   definitions are reported as not executable.
 - Random inputs only show that no counterexample was found among the inputs tried. "Equivalent"
   means the same output on every input tried.
-- Hypotheses that use the proof of an earlier hypothesis are not supported.
 - The broken versions are elaborated from the source text, with `open` commands of the file. Section
   `variable`s are not carried over.
 
@@ -120,6 +130,10 @@ nix build                             # build and test inside the Nix sandbox
 and `Examples/LspTouchstoneFixed/` the progress and position files at commit
 [`f77cc2b`](https://github.com/conao3/rust-lsp-touchstone/tree/f77cc2b/lean/LeanRustGen/Embed/lsp_touchstone),
 which adds the theorems that kill the holes `#assay` found in the earlier files.
+`Examples/Forms/` holds small files in the shapes of other corpora: functions that take a
+precondition proof, and a property stated as `def P : Prop`. `Examples/Verina/A35.lean` is the
+task `verina_advanced_35` of [VERINA](https://github.com/sunblaze-ucb/verina) at commit `66b3ce5`,
+without its benchmark markers.
 
 ## License
 
