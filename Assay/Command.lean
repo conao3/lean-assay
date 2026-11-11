@@ -328,7 +328,7 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
         let deadline := (← IO.monoMsNow) + timeout
         let same ← runClause (← liftTermElabM <| sameOutput f) samples deadline
         if let .ran s := same then
-          if s.counterexample.isNone && enoughTested s minSatisfied then
+          if s.counterexample.isNone && s.exhaustive then
             return { mutant := m, verdict := .equivalent, cells := #[] }
         let mut cells := #[]
         let mut timedOut := false

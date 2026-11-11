@@ -87,8 +87,8 @@ For `#assay f g …`:
 A broken version is a `HOLE` when every column that depends on it held and, on an input that
 satisfies the hypotheses of some column, a function it changes returns a different value from the
 original. The warning names that theorem and input. A version whose output equals the original on
-every input tried, or on every input tried that satisfies the hypotheses, is counted as equivalent
-and not shown.
+every value of its arguments (when they are few enough to try them all), or on every input tried
+that satisfies the hypotheses of the columns, is counted as equivalent and not shown.
 
 Each broken version has `assay.timeout` milliseconds to run the columns. A version that is not
 killed before then is reported as `timeout`.
