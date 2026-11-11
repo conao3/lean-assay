@@ -52,12 +52,15 @@ def theoremsAbout (fns : Array Name) : MetaM (Array Name) := do
     found := found.push (n, line)
   return found.qsort (fun a b => a.2 < b.2 || (a.2 == b.2 && a.1.lt b.1)) |>.map (·.1)
 
-/-- The inductive types declared in modules whose root is one of `roots` that occur in an
-expression. -/
+/-- The inductive types without parameters or indices, declared in modules whose root is one of
+`roots`, that occur in an expression. -/
 def localInductives (roots : Array Name) (e : Expr) : CoreM (Array Name) := do
   let env ← getEnv
   return e.getUsedConstants.filter fun c =>
-    (env.find? c matches some (.inductInfo _)) && roots.contains (moduleOf env c).getRoot
+    match env.find? c with
+    | some (.inductInfo i) =>
+      i.numParams == 0 && i.numIndices == 0 && i.type.isType && roots.contains (moduleOf env c).getRoot
+    | _ => false
 
 /-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them, where a
 deriving handler applies. A type left without an instance makes the checks that need it not
