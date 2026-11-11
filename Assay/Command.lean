@@ -190,7 +190,8 @@ def sameOutput (f : Name) : MetaM Expr := do
     mkForallFVars xs (← mkEq lhs rhs)
 
 /-- Elaborates a mutant and the functions that depend on it, given with their source files and
-commands. Returns `false` if it does not typecheck. -/
+commands, each command once (a `mutual` block declares several of them). Returns `false` if it does
+not typecheck. -/
 def elabMutant (m : Mutant) (renamed : Array Name) (sources : Array (SourceFile × Syntax)) :
     CommandElabM Bool := do
   let (src, cmd) := sources[0]!
@@ -206,11 +207,14 @@ def elabMutant (m : Mutant) (renamed : Array Name) (sources : Array (SourceFile 
     let some s := cmd.getPos? | return false
     let some e := cmd.getTailPos? | return false
     let text ← renameText renamed (applyEdits src.text s e es)
-    if ← elabText (wrap src (declNamespace cmd m.fn) text) then return false
+    if ← elabText (wrap src cmd (declNamespace cmd m.fn) text) then return false
+  let mut done := #[textOf src cmd]
   for g in renamed, (gsrc, gcmd) in sources do
-    if g == m.fn then continue
-    let text ← renameText renamed (textOf gsrc gcmd)
-    if ← elabText (wrap gsrc (declNamespace gcmd g) text) then return false
+    let original := textOf gsrc gcmd
+    if g == m.fn || done.contains original then continue
+    done := done.push original
+    let text ← renameText renamed original
+    if ← elabText (wrap gsrc gcmd (declNamespace gcmd g) text) then return false
   return true
 
 /-- Pads a string with spaces to a width. -/
@@ -290,10 +294,11 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
     | .untestable _ => pure ()
   let mut results := #[]
   for f in fns do
-    let renamed ← liftCoreM <| chainTo roots statements f
+    let chain ← liftCoreM <| chainTo roots statements f
     let mut files : Std.HashMap Name SourceFile := {}
+    let mut renamed := #[]
     let mut sources := #[]
-    for g in renamed do
+    for g in chain do
       let mod := moduleOf env g
       let gsrc ← match files[mod]? with
         | some s => pure s
@@ -301,13 +306,23 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
           let s ← sourceOf g
           files := files.insert mod s
           pure s
-      sources := sources.push (gsrc, ← commandOf gsrc g)
+      let gcmd ← commandOf gsrc g
+      renamed := renamed.push g
+      sources := sources.push (gsrc, gcmd)
+    for g in chain, (gsrc, gcmd) in sources do
+      let ns := declNamespace gcmd g
+      for w in declIdsOf gcmd do
+        let n := ns ++ w
+        let n := if env.contains n then n else mkPrivateNameCore (moduleOf env g) n
+        if env.contains n && !renamed.contains n then
+          renamed := renamed.push n
+          sources := sources.push (gsrc, gcmd)
     let (src, cmd) := sources[0]!
     let reps ← liftTermElabM <| replacements f
     let mutants := reps.map (fun (l, v) => { fn := f, label := s!"{f.componentsRev.head!} := {l}", change := .replace v : Mutant })
       ++ (editMutants src f cmd).map fun m => { m with label := s!"{f.componentsRev.head!}: {m.label}" }
     for m in mutants do
-      let r : MutantResult ← withoutModifyingEnv do
+      let r : MutantResult ← withoutModifyingEnv <| tryCatch (do
         if !(← elabMutant m renamed sources) then
           return { mutant := m, verdict := .stillborn, cells := #[] }
         let deadline := (← IO.monoMsNow) + timeout
@@ -341,13 +356,14 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
         for c in clauses, b in baseline, count in counts do
           let usable := match b with | .ran s => s.counterexample.isNone | _ => false
           if !usable || differs.isSome then continue
-          let some stmt ← liftTermElabM <| differsUnder renamed c.statement | continue
+          let some stmt ← liftTermElabM (do differsUnder renamed (← specialize c.statement)) | continue
           if let .ran s ← runClause stmt count deadline then
             if s.timedOut then timedOut := true
             differs := s.counterexample.map (c.label, ·)
         match differs with
         | some (t, d) => return { mutant := m, verdict := .hole t d, cells }
-        | none => return { mutant := m, verdict := if timedOut then .timeout else .equivalent, cells }
+        | none => return { mutant := m, verdict := if timedOut then .timeout else .equivalent, cells })
+        fun _ => return { mutant := m, verdict := .stillborn, cells := #[] }
       results := results.push r
   let shown := results.filter fun r => r.verdict matches .killed | .hole _ _ | .inconclusive | .timeout
   let width := shown.foldl (fun w r => max w r.mutant.label.length) 6

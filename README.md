@@ -56,7 +56,8 @@ For `#assay f g …`:
 1. It collects the theorems in the modules of `f`, `g`, … whose statements mention them or a
    definition that calls them. `#assay f g … using t₁ t₂ …` takes the theorems `t₁`, `t₂`, …
    instead, from any module. A proposition defined in the modules of the functions and the theorems
-   is unfolded first, so `theorem p_proven : P` with `def P : Prop := ∀ x, …` is read as `∀ x, …`.
+   that a conclusion is gets unfolded, so `theorem p_proven : P` with `def P : Prop := ∀ x, …` is
+   read as `∀ x, …`; the propositions inside the conclusion stay folded.
    Each conjunct of a conclusion is a column of the table, also after unfolding `let` and `have`
    and under binders and hypotheses (`H → A ∧ B` gives `H → A` and `H → B`).
    - A hypothesis may be passed to the functions as a precondition (`f xs h` with
@@ -76,7 +77,8 @@ For `#assay f g …`:
      an `if`.
 4. Each broken version is elaborated next to the original under a new name, together with the
    definitions between it and the theorems: those the statements reach that call it, directly or
-   through each other, in any module of the same package. Versions that do not typecheck are counted as stillborn.
+   through each other, in any module of the same package. Versions that do not typecheck, or that
+   raise an error when they are run, are counted as stillborn.
 5. Every column is run on the broken version. A cell is `✗` when an input satisfies the hypotheses
    but not the conclusion, `·` when enough inputs satisfied the hypotheses and the conclusion held,
    `?` when too few inputs satisfied the hypotheses, and `-` when the column does not depend on the
@@ -112,13 +114,18 @@ every UTF-8 and UTF-16 width and the code points at the boundaries between width
 
 ## Limits
 
-- Only executable statements: the hypotheses and conclusions must be decidable, and the data
-  binders need plausible's `SampleableExt`. Theorems about real numbers or other noncomputable
-  definitions are reported as not executable.
+- Only executable statements. A hypothesis or conclusion runs when it has a `Decidable` instance,
+  or when it is built from such parts with `∧`, `∨`, `¬`, `→`, `↔`, `∃ xs, e = c … xs ∧ …` for a
+  constructor `c` (`∃ t, f x = .ok t`), `∃ x, x ∈ l ∧ …` and `∀ x, x ∈ l → …` over a list, a
+  `match` on a value of a non-recursive type, and non-recursive definitions. The data binders need
+  plausible's `SampleableExt`. Theorems about real numbers or other noncomputable definitions are
+  reported as not executable.
+- A statement over a type runs over `Int`: its binders of type `Type` are set to `Int`, its
+  universes to 0, and its instance binders to the instances of `Int`.
 - Random inputs only show that no counterexample was found among the inputs tried. "Equivalent"
   means the same output on every input tried.
-- The broken versions are elaborated from the source text, with `open` commands of the file. Section
-  `variable`s are not carried over.
+- The broken versions are elaborated from the source text, with the `open` commands of the file
+  and the `variable` commands before the declaration.
 
 ## Development
 
@@ -135,7 +142,8 @@ and `Examples/LspTouchstoneFixed/` the progress and position files at commit
 which adds the theorems that kill the holes `#assay` found in the earlier files.
 `Examples/Forms/` holds small files in the shapes of other corpora: functions that take a
 precondition proof, a property stated as `def P : Prop`, and a theorem in another module than the
-function, about a function that calls it (`Split/`). `Examples/Verina/A35.lean` is the
+function, about a function that calls it (`Split/`), and the shapes of statements that run without a
+`Decidable` instance, over a type variable (`Shapes.lean`). `Examples/Verina/A35.lean` is the
 task `verina_advanced_35` of [VERINA](https://github.com/sunblaze-ucb/verina) at commit `66b3ce5`,
 without its benchmark markers.
 

@@ -31,11 +31,22 @@ def propDefsIn (mods : Array Name) : MetaM NameSet := do
       out := out.insert n
   return out
 
-/-- A theorem's statement with the propositions defined in the audited modules unfolded, so that
-`theorem p_proven : P` with `def P : Prop := ∀ x, …` states `∀ x, …`. -/
+/-- Unfolds the propositions defined in the audited modules that a statement's conclusion is,
+under its binders and hypotheses, so that `theorem p_proven : P` with `def P : Prop := ∀ x, …`
+states `∀ x, …`. The propositions inside the conclusion are left folded, so that their `Decidable`
+instances still apply. -/
+partial def unfoldHead (propDefs : NameSet) (e : Expr) : MetaM Expr :=
+  forallTelescope e fun xs body => do
+    let body := body.headBeta
+    let .const c us := body.getAppFn | mkForallFVars xs body
+    let some (.defnInfo d) := (← getEnv).find? c | mkForallFVars xs body
+    if !propDefs.contains c then return ← mkForallFVars xs body
+    let v := (d.value.instantiateLevelParams d.levelParams us).beta body.getAppArgs
+    mkForallFVars xs (← unfoldHead (propDefs.erase c) v)
+
+/-- A theorem's statement with its conclusion unfolded as `unfoldHead` does. -/
 def statementOf (propDefs : NameSet) (thm : Name) : MetaM Expr := do
-  let ty ← deltaExpand (← getConstInfo thm).type propDefs.contains
-  return ty.headBeta
+  unfoldHead propDefs (← getConstInfo thm).type
 
 /-- The theorems in the audited functions' modules whose statement, with the modules' propositions
 unfolded, mentions one of the functions, in the order they were declared. -/
@@ -47,19 +58,21 @@ def theoremsAbout (fns : Array Name) : MetaM (Array Name) := do
   for (n, info) in env.constants.toList do
     let .thmInfo _ := info | continue
     if isGenerated env fns n || !mods.contains (moduleOf env n) then continue
-    if !(← statementOf propDefs n).getUsedConstants.any fns.contains then continue
+    let expanded ← deltaExpand (← getConstInfo n).type propDefs.contains
+    if !expanded.getUsedConstants.any fns.contains then continue
     let line := (← findDeclarationRanges? n).map (·.range.pos.line) |>.getD 0
     found := found.push (n, line)
   return found.qsort (fun a b => a.2 < b.2 || (a.2 == b.2 && a.1.lt b.1)) |>.map (·.1)
 
-/-- The inductive types without parameters or indices, declared in modules whose root is one of
-`roots`, that occur in an expression. -/
+/-- The inductive types of data (not propositions, without indices), declared in modules whose
+root is one of `roots`, that occur in an expression. -/
 def localInductives (roots : Array Name) (e : Expr) : CoreM (Array Name) := do
   let env ← getEnv
   return e.getUsedConstants.filter fun c =>
     match env.find? c with
     | some (.inductInfo i) =>
-      i.numParams == 0 && i.numIndices == 0 && i.type.isType && roots.contains (moduleOf env c).getRoot
+      let ret := i.type.getForallBody
+      i.numIndices == 0 && ret.isSort && !ret.isProp && roots.contains (moduleOf env c).getRoot
     | _ => false
 
 /-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them, where a
@@ -68,8 +81,10 @@ executable, which the report says. -/
 def ensureInstances (ty : Name) : CommandElabM Unit := do
   let id := mkIdent ty
   let missing (cls : Name) : CommandElabM Bool := liftTermElabM do
-    let inst ← mkAppM cls #[mkConst ty]
-    return (← trySynthInstance inst) matches .none
+    try
+      let inst ← mkAppM cls #[mkConst ty]
+      return (← trySynthInstance inst) matches .none
+    catch _ => return true
   for (cls, cmd) in [
       (``Repr, ← `(deriving instance Repr for $id)),
       (``DecidableEq, ← `(deriving instance DecidableEq for $id)),

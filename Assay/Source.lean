@@ -112,21 +112,44 @@ def mutantName (env : Environment) (n : Name) : Name :=
   | some u => mkPrivateName env (suffixed u mutantSuffix)
   | none => suffixed n mutantSuffix
 
-/-- Edits that rename every identifier whose last component is the last component of a renamed
-declaration. -/
+/-- Whether the components of `p` are the last components of `q`. -/
+def isSuffixOf (p q : Name) : Bool :=
+  let ps := p.components
+  let qs := q.components
+  ps.length ≤ qs.length && qs.drop (qs.length - ps.length) == ps
+
+/-- Whether an identifier as written may refer to a renamed declaration: its last component is
+the declaration's, and what comes before it is empty, starts with a lowercase letter (a variable,
+for `x.f`), or is the end of the declaration's namespace (`P.f` for `A.P.f`). -/
+def mayRefer (renamed : Array Name) (written : Name) : Bool :=
+  match written with
+  | .str p s =>
+    let lower := match p.components.head? with
+      | some (.str _ h) => h.front.isLower
+      | _ => false
+    renamed.any fun n =>
+      let u := privateToUserName n
+      match u with
+      | .str q t => t == s && (p.isAnonymous || lower || isSuffixOf p q)
+      | _ => false
+  | _ => false
+
+/-- Edits that rename every identifier that may refer to a renamed declaration, except a
+constructor written `.c`. -/
 partial def renameEdits (renamed : Array Name) (suffix : String) (stx : Syntax) : Array Edit :=
-  let lasts := renamed.filterMap fun n => match n with | .str _ s => some s | _ => none
-  go lasts stx #[]
+  go stx #[]
 where
-  go (lasts : Array String) (stx : Syntax) (acc : Array Edit) : Array Edit :=
+  go (stx : Syntax) (acc : Array Edit) : Array Edit :=
     match stx with
     | .ident _ raw val _ =>
-      match val, stx.getPos?, stx.getTailPos? with
-      | .str _ s, some p, some e =>
-        if lasts.contains s then acc.push { start := p, stop := e, replacement := raw.toString ++ suffix }
+      match stx.getPos?, stx.getTailPos? with
+      | some p, some e =>
+        if mayRefer renamed val then acc.push { start := p, stop := e, replacement := raw.toString ++ suffix }
         else acc
-      | _, _, _ => acc
-    | .node _ _ args => args.foldl (fun acc a => go lasts a acc) acc
+      | _, _ => acc
+    | .node _ kind args =>
+      if kind == ``Parser.Term.dotIdent then acc
+      else args.foldl (fun acc a => go a acc) acc
     | _ => acc
 
 /-- The namespace a declaration was written in: its name without the name written in its
@@ -143,15 +166,27 @@ where
     if stx.isOfKind ``Command.declId then some stx
     else stx.getArgs.findSome? findDeclId
 
+/-- The names written in the `declId`s of a command: one, or each declaration of a `mutual`
+block. -/
+partial def declIdsOf (stx : Syntax) : Array Name :=
+  if stx.isOfKind ``Command.declId then #[stx[0].getId]
+  else stx.getArgs.foldl (fun acc a => acc ++ declIdsOf a) #[]
+
 /-- The `open` commands of a source file. -/
 def opensOf (src : SourceFile) : Array String :=
   src.commands.filter (·.isOfKind ``Command.open) |>.map (textOf src)
 
-/-- Wraps a command's text in its namespace and the file's `open` commands. -/
-def wrap (src : SourceFile) (ns : Name) (body : String) : String :=
-  let opens := "\n".intercalate (opensOf src).toList
-  if ns.isAnonymous then s!"{opens}\n{body}\n"
-  else s!"namespace {ns}\n{opens}\n{body}\nend {ns}\n"
+/-- The `variable` commands of a source file before a command. -/
+def variablesBefore (src : SourceFile) (cmd : Syntax) : Array String :=
+  let pos := cmd.getPos?.getD 0
+  src.commands.filter (fun c => c.isOfKind ``Command.variable && c.getPos?.getD 0 < pos) |>.map (textOf src)
+
+/-- Wraps the text of a command of a source file in its namespace, the file's `open` commands and
+the `variable` commands before it. -/
+def wrap (src : SourceFile) (cmd : Syntax) (ns : Name) (body : String) : String :=
+  let pre := "\n".intercalate (opensOf src ++ variablesBefore src cmd).toList
+  if ns.isAnonymous then s!"{pre}\n{body}\n"
+  else s!"namespace {ns}\n{pre}\n{body}\nend {ns}\n"
 
 /-- Elaborates the commands in a text. Returns whether any of them logged an error. -/
 partial def elabText (text : String) : CommandElabM Bool := do
