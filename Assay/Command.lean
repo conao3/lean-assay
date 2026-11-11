@@ -253,9 +253,9 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
   let statements ← thms.mapM fun t => liftTermElabM <| statementOf propDefs t
   if thms.isEmpty then
     throwErrorAt ref "no theorem mentions {fns}"
-  for ty in statements ++ (← fns.mapM fun f => return (← getConstInfo f).type) do
-    for i in ← liftCoreM <| localInductives roots ty do
-      ensureInstances i
+  let types := statements ++ (← fns.mapM fun f => return (← getConstInfo f).type)
+  for i in ← liftCoreM <| inductiveClosure roots types do
+    ensureInstances i
   let mut clauses := #[]
   for t in thms, s in statements do
     clauses := clauses ++ (← liftTermElabM <| clausesOf t s)

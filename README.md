@@ -46,8 +46,9 @@ rev = "master"
 ```
 
 Run `#assay` in a file of its own: it derives the instances it needs (`Repr`, `DecidableEq`,
-plausible's `Arbitrary` and `Shrinkable`) for the types of the audited package where a deriving
-handler applies, and those instances stay in that file.
+plausible's `Arbitrary` and `Shrinkable`) for the types of the audited package that the statements
+use, and for the types of their fields first, where a deriving handler applies; those instances
+stay in that file.
 
 ## What it checks
 

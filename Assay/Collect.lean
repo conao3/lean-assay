@@ -75,6 +75,26 @@ def localInductives (roots : Array Name) (e : Expr) : CoreM (Array Name) := do
       i.numIndices == 0 && ret.isSort && !ret.isProp && roots.contains (moduleOf env c).getRoot
     | _ => false
 
+/-- The inductive types that `localInductives` finds in the expressions, and those in the types of
+their constructors, each after the types of its fields. -/
+partial def inductiveClosure (roots : Array Name) (es : Array Expr) : CoreM (Array Name) := do
+  let mut out := #[]
+  let mut seen : NameSet := {}
+  for e in es do
+    for i in ← localInductives roots e do
+      (out, seen) ← visit i out seen
+  return out
+where
+  visit (i : Name) (out : Array Name) (seen : NameSet) : CoreM (Array Name × NameSet) := do
+    if seen.contains i then return (out, seen)
+    let mut seen := seen.insert i
+    let mut out := out
+    let .inductInfo info ← getConstInfo i | return (out, seen)
+    for c in info.ctors do
+      for j in ← localInductives roots (← getConstInfo c).type do
+        if j != i then (out, seen) ← visit j out seen
+    return (out.push i, seen)
+
 /-- Derives `Repr`, `DecidableEq`, `Arbitrary` and `Shrinkable` for a type that lacks them, where a
 deriving handler applies. A type left without an instance makes the checks that need it not
 executable, which the report says. -/
