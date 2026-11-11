@@ -63,8 +63,9 @@ For `#assay f g …`:
    - A hypothesis may be passed to the functions as a precondition (`f xs h` with
      `h : f_precond xs`). A column computes its conclusion only on inputs that satisfy the
      hypotheses, with the proofs replaced by the axiom `Assay.assumed`, which the compiler erases.
-2. It runs every column on the original functions. A column that fails on the original is
-   reported and left out of the rest. A column whose hypotheses no input satisfies is reported as
+2. It runs every column on the original functions. A column that fails on the original or is not
+   executable is reported, and is `?` for every broken version it depends on, so that such a
+   version is not reported as a hole. A column whose hypotheses no input satisfies is reported as
    possibly vacuous.
 3. It breaks each function:
    - whole replacements: `default`, each constructor of the result type (and `some c` for each
@@ -81,8 +82,8 @@ For `#assay f g …`:
    raise an error when they are run, are counted as stillborn.
 5. Every column is run on the broken version. A cell is `✗` when an input satisfies the hypotheses
    but not the conclusion, `·` when enough inputs satisfied the hypotheses and the conclusion held,
-   `?` when too few inputs satisfied the hypotheses, and `-` when the column does not depend on the
-   function.
+   `?` when too few inputs satisfied the hypotheses or the column does not run, and `-` when the
+   column does not depend on the function.
 
 A broken version is a `HOLE` when every column that depends on it held and, on an input that
 satisfies the hypotheses of some column, a function it changes returns a different value from the

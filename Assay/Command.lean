@@ -334,8 +334,11 @@ def assay (fns : Array Name) (named : Option (Array Name)) (ref : Syntax) : Comm
         let mut timedOut := false
         for c in clauses, b in baseline, count in counts do
           let usable := match b with | .ran s => s.counterexample.isNone | _ => false
-          if !usable || !c.statement.getUsedConstants.any renamed.contains then
+          if !c.statement.getUsedConstants.any renamed.contains then
             cells := cells.push Cell.skipped
+            continue
+          if !usable then
+            cells := cells.push Cell.untested
             continue
           let cell ← match ← runClause (substitute (← getEnv) renamed c.statement) count deadline with
             | .ran s =>
